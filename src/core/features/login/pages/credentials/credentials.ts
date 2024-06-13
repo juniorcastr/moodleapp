@@ -36,6 +36,7 @@ import { CoreSitesFactory } from '@services/sites-factory';
 import { EMAIL_SIGNUP_FEATURE_NAME, FORGOTTEN_PASSWORD_FEATURE_NAME } from '@features/login/constants';
 import { CoreCustomURLSchemes } from '@services/urlschemes';
 import { CoreSiteError } from '@classes/errors/siteerror';
+import { CoreNative } from '@features/native/services/native';
 
 /**
  * Page to enter the user credentials.
@@ -291,6 +292,8 @@ export class CoreLoginCredentialsPage implements OnInit, OnDestroy {
 
             this.siteId = id;
 
+            await this.storeCredentialsInSecureStorage(id, username, password);
+
             await CoreNavigator.navigateToSiteHome({ params: { urlToOpen: this.urlToOpen } });
         } catch (error) {
             if (error instanceof CoreSiteError && CoreLoginHelper.isAppUnsupportedError(error)) {
@@ -364,6 +367,13 @@ export class CoreLoginCredentialsPage implements OnInit, OnDestroy {
             this.siteId,
         );
         this.valueChangeSubscription?.unsubscribe();
+    }
+
+    async storeCredentialsInSecureStorage(siteId: string, username: string, password: string): Promise<void> {
+        await CoreNative.plugin('secureStorage')?.store({
+            username: username,
+            password: password,
+        }, siteId);
     }
 
 }
