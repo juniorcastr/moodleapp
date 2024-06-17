@@ -33,6 +33,8 @@ import { Translate } from '@singletons';
 import { SafeHtml } from '@angular/platform-browser';
 import { CoreSitePublicConfigResponse } from '@classes/sites/unauthenticated-site';
 import { FORGOTTEN_PASSWORD_FEATURE_NAME } from '@features/login/constants';
+import { FingerprintAIO } from '@awesome-cordova-plugins/fingerprint-aio';
+import { CoreNative } from '@features/native/services/native';
 
 /**
  * Page to enter the user password to reconnect to a site.
@@ -71,6 +73,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
 
     constructor(
         protected fb: FormBuilder,
+        // protected faio: FingerprintAIO,
     ) {
         const currentSite = CoreSites.getCurrentSite();
 
@@ -331,6 +334,113 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     keyUp(e: KeyboardEvent): void {
         if (e.key === 'Escape') {
             this.cancel(e);
+        }
+    }
+
+    // async loginWithFingerprint(): Promise<void> {
+    //     try {
+    //         await this.faio.show({
+    //             title: 'Biometric Authentication',
+    //             description: 'Scan your fingerprint to login',
+    //             fallbackButtonTitle: 'Use Backup',
+    //         });
+
+    //         // // Após a autenticação bem-sucedida, você pode recuperar o token de acesso e fazer o login.
+    //         // const password = ''; // Seu código para recuperar a senha do usuário, se necessário.
+    //         // const tokenData = await CoreSites.getUserToken(this.site.getURL(), this.username, password);
+
+    //         // Restante do seu código para atualizar o token do site e redirecionar o usuário.
+    //     } catch (error) {
+    //         CoreDomUtils.showErrorModal('Fingerprint authentication failed', true);
+    //     }
+    // }
+
+    async digitalAvaiable(): Promise<void> {
+        const viabilidade = await FingerprintAIO.isAvailable();
+        if(viabilidade){
+            CoreDomUtils.showAlert('Funciona digital', 'funciona');
+        }else{
+            CoreDomUtils.showAlert('Nao funcion digital', 'noa funfa');
+        }
+    }
+
+    async performFingerprintLogin(): Promise<void> {
+        try {
+            await FingerprintAIO.show({
+                title: 'Biometric Authentication',
+                description: 'Scan your fingerprint to login',
+                fallbackButtonTitle: 'Use Backup',
+            });
+
+            const credentials = await this.getCredentialsFromSecureStorage(this.siteId);
+                if (credentials) {
+                    // Perform login with stored credentials.
+                    await this.loginWithCredentials(credentials.password);
+                } else {
+                    CoreDomUtils.showErrorModal('Erro, nao existem credenciais', true);
+                }
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error.message || 'falha ao ler digital, tente novamente', true);
+        }
+    }
+
+    /**
+     * Get credentials from secure storage.
+     *
+     * @param siteId Site ID to retrieve credentials for.
+     * @returns Promise with credentials object { username: string, password: string } or null if not found.
+     */
+    async getCredentialsFromSecureStorage(siteId: string): Promise<{ username: string; password: string } | null> {
+        try {
+            const result = await CoreNative.plugin('secureStorage')?.get(['username', 'password'], siteId);
+
+            // CoreDomUtils.showAlert('Teste variavel secure storage', result?.username ?? '');
+
+            return {
+                username: result?.username ?? '',
+                password: result?.password ?? '',
+            };
+        } catch (error) {
+            return null;
+        }
+    }
+
+    async loginWithCredentials(password: string): Promise<void> {
+        const modal = await CoreDomUtils.showModalLoading();
+
+        try {
+            // Start the authentication process.
+            const data = await CoreSites.getUserToken(this.site.getURL(), this.username, password);
+
+            await CoreSites.updateSiteToken(this.site.getURL(), this.username, data.token, data.privateToken);
+
+            CoreForms.triggerFormSubmittedEvent(this.formElement, true);
+
+            // Update site info too.
+            await CoreSites.updateSiteInfoByUrl(this.site.getURL(), this.username);
+
+            // Reset fields so the data is not in the view anymore.
+            this.credForm.controls['password'].reset();
+
+            // Go to the site initial page.
+            this.loginSuccessful = true;
+
+            await CoreNavigator.navigateToSiteHome({
+                params: this.redirectData,
+            });
+        } catch (error) {
+            CoreLoginHelper.treatUserTokenError(this.site.getURL(), error, this.username, password);
+
+            if (error.loggedout) {
+                this.cancel();
+            } else if (error.errorcode == 'forcepasswordchangenotice') {
+                // Reset password field.
+                this.credForm.controls.password.reset();
+            } else if (error.errorcode == 'invalidlogin') {
+                this.reconnectAttempts++;
+            }
+        } finally {
+            modal.dismiss();
         }
     }
 

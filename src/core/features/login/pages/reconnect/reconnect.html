@@ -80,6 +80,10 @@
                     </ion-button>
                 </form>
 
+                <button ion-button expand="block" (click)="performFingerprintLogin()">
+                    Login com Impressão Digital
+                </button>
+
                 <ng-container *ngIf="isBrowserSSO">
                     <ion-button expand="block" (click)="openBrowserSSO()"
                         class="ion-margin core-login-login-inbrowser-button ion-text-wrap">
